@@ -5,21 +5,21 @@
 
   
   <title>
-    史辰龙 -
-    
+    Dagger2使用 |
+    史辰龙
   </title>
   
 
 
   <meta name="description" content>
   <meta name="author" content="John Doe">
-  <meta property="og:title" content="史辰龙">
+  <meta property="og:title" content="Dagger2使用">
   <meta property="og:description" content>
   <meta property="og:site_name" content="史辰龙">
   <meta property="og:image" content="http://yoursite.com/img/default.jpg">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:description" content>
-  <meta name="twitter:title" content="史辰龙">
+  <meta name="twitter:title" content="Dagger2使用">
 
   <meta name="twitter:image" content="http://yoursite.com/img/default.jpg">
 
@@ -73,18 +73,97 @@
     <div class="row">
         <div class="col-sm-8">
             <h2 class="blog-post-title">
-                
+                Dagger2使用
             </h2>
             <p class="meta"><i class="far fa-clock"></i>
                 2019-08-02
                 
             </p>
             <!-- Content -->
-            <hr>
-<h2 id="title-Dagger"><a href="#title-Dagger" class="headerlink" title="title:Dagger"></a>title:Dagger</h2>
+            <p>Dagger官网地址:<a href="https://dagger.dev/" target="_blank" rel="noopener">https://dagger.dev/</a></p>
+<p>Dagger是一个完全静态的、编译时依赖 注入框架 ，适用于Java和Android。它是Square创建的早期版本的一个改编版本，现在由谷歌维护。</p>
+<p>说说什么是依赖注入?</p>
+<p>依赖注入对于刚接触到这个概念的同学可能不太清楚什么意思，说起来也比较简单甚至我们每天都在编写这样的代码。</p>
+<p>public class A{<br>    private B b;<br>    public A(B _b){<br>        this.b = _b;<br>    }<br>}</p>
+<p>上面的代码是不是很常见，我们发现业务类A依赖了业务类B。<br>这就是一个典型的依赖注入。<br>那我们来想想如果A被很多的其他业务类依赖如果A做了修改是不是要修改很多的地方呢？<br>这样我们的Dagger就应该登场了，Dagger就为了解决此类问题而生的。</p>
+<p>简单实用：</p>
+<p>导依赖</p>
+<p>build。gradle中导入依赖如：</p>
+<p>dependencies {<br>    implementation ‘com.google.dagger:dagger-android:2.17’<br>    annotationProcessor”com.google.dagger:dagger-compiler:2.17”<br>    implementation ‘com.google.dagger:dagger-android-support:2.17’ // if you use the support libraries<br>    annotationProcessor ‘com.google.dagger:dagger-android-processor:2.17’<br>}</p>
+<p>业务类ClassA</p>
+<p>package com.baweigame.daggerdemoapplication;</p>
+<p>import javax.inject.Inject;</p>
+<p>public class ClassA {<br>    @Inject<br>    public ClassA(){</p>
+<pre><code>}
+
+public int Add(int a,int b){
+    return a+b;
+}</code></pre><p>}</p>
+<p>业务类ClassB</p>
+<p>package com.baweigame.daggerdemoapplication;</p>
+<p>import javax.inject.Inject;</p>
+<p>public class ClassB {<br>    @Inject<br>    public ClassB(){</p>
+<pre><code>}
+
+@Inject
+ClassA classA;
+
+public int Add(int a,int b){
+    return classA.Add(a,b);
+}</code></pre><p>}</p>
+<p>MainActivityComponent</p>
+<p>package com.baweigame.daggerdemoapplication;</p>
+<p>import android.app.Activity;</p>
+<p>import dagger.Component;</p>
+<p>@Component<br>public interface MainActivityComponent{<br>    void inject(MainActivity activity);<br>}</p>
+<p>MainActivity</p>
+<p>package com.baweigame.daggerdemoapplication;</p>
+<p>import android.app.Activity;<br>import android.support.v7.app.AppCompatActivity;<br>import android.os.Bundle;<br>import android.view.View;<br>import android.widget.TextView;<br>import android.widget.Toast;</p>
+<p>import javax.inject.Inject;</p>
+<p>import dagger.Component;</p>
+<p>public class MainActivity extends AppCompatActivity {<br>    private TextView tvTest;</p>
+<pre><code>@Inject
+ClassB classB;
+
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_main);
+
+    initView();
+    initListener();
+
+    DaggerMainActivityComponent.create().inject(this);
+}
+
+private void initListener() {
+    tvTest.setOnClickListener(new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            Toast.makeText(MainActivity.this, &quot;&quot;+classB.Add(2,3), Toast.LENGTH_SHORT).show();
+        }
+    });
+}
+
+private void initView() {
+    tvTest = (TextView) findViewById(R.id.tv_test);
+}</code></pre><p>}</p>
+<p>我们看上面的例子，比较简单，首先业务类B依赖了业务类A，MainActivity依赖了业务类B，我们发现用Dagger实现起来是不是很清爽。如果我们不用Dagger我的代码大概应该是下面的样子：</p>
+<p>–一段伪代码</p>
+<p>ClassA classA=new ClassA();<br>ClassB classB=new ClassB();<br>classB.set(classA);</p>
+<p>classB.Add(2,3);</p>
+<p>使用Dagger2</p>
+<p>@Inject<br>ClassB classB;</p>
+<p>classB.Add(2,3);</p>
+<p>感觉是不是很简洁。<br>上面的例子中出现了一些新的”东西”，我们发现大多出现的是注解。</p>
+
             <br />
             <p class="meta">
                 
+
+<a href="/tags/Android/"> <i class="fas fa-tags"></i>
+    Android </a>
+
             </p>
         </div>
 
