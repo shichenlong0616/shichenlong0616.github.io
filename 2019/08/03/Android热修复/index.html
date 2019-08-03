@@ -1,0 +1,237 @@
+<html>
+<!-- Head tag -->
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+
+  
+  <title>
+    Android热修复 |
+    史辰龙
+  </title>
+  
+
+
+  <meta name="description" content>
+  <meta name="author" content="John Doe">
+  <meta property="og:title" content="Android热修复">
+  <meta property="og:description" content>
+  <meta property="og:site_name" content="史辰龙">
+  <meta property="og:image" content="http://yoursite.com/img/default3.jpg">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:description" content>
+  <meta name="twitter:title" content="Android热修复">
+
+  <meta name="twitter:image" content="http://yoursite.com/img/default.jpg">
+
+  <script src="https://www.amcharts.com/lib/4/core.js"></script>
+  <script src="https://www.amcharts.com/lib/4/charts.js"></script>
+  <script src="https://www.amcharts.com/lib/4/themes/animated.js"></script>
+
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.1/css/all.css" integrity="sha384-5sAR7xN1Nv6T6+dT2mhtzEpVJvfS3NScPQTrOxhwjIuvcA67KV2R5Jz6kr4abQsz" crossorigin="anonymous">
+  <link rel="stylesheet" href="/./css/style.css">
+
+</head>
+
+<body>
+    <!-- Menu -->
+    <nav id="navbar" class="navbar fixed-top navbar-expand-lg navbar-dark page-navbar gradient">
+  <div class="container">
+    <a class="navbar-brand logo" href="http://yoursite.com">
+      史辰龙</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav"
+      aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav mx-auto">
+        <li class="nav-item item">
+          
+        <li class="nav-item item">
+          <a class="nav-link" href="/">
+            Home</a>
+        </li>
+        
+        <li class="nav-item item">
+          <a class="nav-link" href="/archives">
+            🗂️Archives</a>
+        </li>
+        
+        <li class="nav-item item">
+          <a class="nav-link" href="https://hexo.io/">
+            Hexo</a>
+        </li>
+        
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+    <main class="page main-page">
+        <div class="container blogPost">
+    <div class="row">
+        <div class="col-sm-8">
+            <h2 class="blog-post-title">
+                Android热修复
+            </h2>
+            <p class="meta"><i class="far fa-clock"></i>
+                2019-08-03
+                
+            </p>
+            <!-- Content -->
+            <p><img src="2019-08-03-11-53-40.png" alt></p>
+<p><strong>类如何加载？</strong></p>
+<p>java中我们一般使用ClassLoader进行类的加载。<br>android 中 我们都知道最后的代码文件都会被打包成dex格式的文件；class文件包含在dex文件中。<br>加载dex中class文件我们需要使用DexClassLoader或者PathClassLoader。</p>
+<p><strong>类加载器</strong></p>
+<p>PathClassLoader可以加载Android系统中的dex文件<br>DexClassLoader可以加载任意目录的dex/zip/apk/jar文件 , 但是要指定optimizedDirectory.<br>这两个类加载器都继承BaseDexClassLoader, 并且在构造函数中, DexClassLoader多传入了一个optimizedDirectory。</p>
+<p>我们来看看 BaseDexClassLoader</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">public class BaseDexClassLoader extends ClassLoader &#123;</span><br><span class="line">    private final DexPathList pathList;</span><br><span class="line">    public BaseDexClassLoader(String dexPath, File optimizedDirectory, String libraryPath, ClassLoader parent)&#123;</span><br><span class="line">        super(parent);</span><br><span class="line">        this.pathList = new DexPathList(this, dexPath, libraryPath, optimizedDirectory);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>构造方法中初始化了pathList, 传入三个参数 , 分别为<br>dexPath：目标文件路径（一般是dex文件，也可以是jar/apk/zip文件）所在目录。热修复时用来指定新的dex<br>optimizedDirectory：dex文件的输出目录（因为在加载jar/apk/zip等压缩格式的程序文件时会解压出其中的dex文件，该目录就是专门用于存放这些被解压出来的dex文件的）。<br>libraryPath：加载程序文件时需要用到的库路径。<br>parent：父加载器</p>
+<p><strong>类的加载过程</strong><br>如下方法用于加载dex中的class文件， 拿到初始化完成的 pathList 之后 , 根据类名找出相应的class字节码文件, 如果没有异常直接返回class.</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">@Overrideprotected Class&lt;?&gt; findClass(String name) throws ClassNotFoundException &#123;</span><br><span class="line">    List&lt;Throwable&gt; suppressedExceptions = new ArrayList&lt;Throwable&gt;();</span><br><span class="line">    //从pathList中找到相应类名的class文件</span><br><span class="line">    Class c = pathList.findClass(name, suppressedExceptions);</span><br><span class="line">    //判空, 抛出异常</span><br><span class="line">    if (c == null) &#123;</span><br><span class="line">        ClassNotFoundException cnfe = new ClassNotFoundException(&quot;Didn&apos;t find class \&quot;&quot; + name + &quot;\&quot; on path: &quot; + pathList);</span><br><span class="line">        for (Throwable t : suppressedExceptions) &#123;</span><br><span class="line">            cnfe.addSuppressed(t);</span><br><span class="line">        &#125;</span><br><span class="line">        throw cnfe;</span><br><span class="line">    &#125;</span><br><span class="line">    return c;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>DexPathList</strong></p>
+<p>构造函数. 我们在BaseDexClassLoader中实例化DexPathList需要用到<br>findClass方法, 在BaseDexClassLoader的findClass中, 本质调用了DexpathList的fndClass方法</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">public DexPathList(ClassLoader definingContext, String dexPath,</span><br><span class="line">        String libraryPath, File optimizedDirectory) &#123;</span><br><span class="line">     this.definingContext = definingContext;</span><br><span class="line">     ArrayList&lt;IOException&gt; suppressedExceptions = new ArrayList&lt;IOException&gt;();</span><br><span class="line">     // save dexPath for BaseDexClassLoader</span><br><span class="line">     this.dexElements = makePathElements(splitDexPath(dexPath), optimizedDirectory,</span><br><span class="line">                                         suppressedExceptions);</span><br><span class="line">     </span><br><span class="line">     this.nativeLibraryDirectories = splitPaths(libraryPath, false);</span><br><span class="line">     this.systemNativeLibraryDirectories =</span><br><span class="line">             splitPaths(System.getProperty(&quot;java.library.path&quot;), true);</span><br><span class="line">     List&lt;File&gt; allNativeLibraryDirectories = new ArrayList&lt;&gt;(nativeLibraryDirectories);</span><br><span class="line">     allNativeLibraryDirectories.addAll(systemNativeLibraryDirectories);</span><br><span class="line">     this.nativeLibraryPathElements = makePathElements(allNativeLibraryDirectories, null,</span><br><span class="line">                                                       suppressedExceptions);</span><br><span class="line">     </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将传入的classLoader保存起来 , 接下来使用makePathElements方法 ,来初始化Element数组</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">private static Element[] makeDexElements(ArrayList&lt;File&gt; files, File optimizedDirectory, ArrayList&lt;IOException&gt; suppressedExceptions) &#123;</span><br><span class="line">    // 1.创建Element集合</span><br><span class="line">    ArrayList&lt;Element&gt; elements = new ArrayList&lt;Element&gt;();</span><br><span class="line">    // 2.遍历所有dex文件（也可能是jar、apk或zip文件）</span><br><span class="line">    for (File file : files) &#123;</span><br><span class="line">        ZipFile zip = null;</span><br><span class="line">        DexFile dex = null;</span><br><span class="line">        String name = file.getName();</span><br><span class="line">        ...</span><br><span class="line">        // 如果是dex文件</span><br><span class="line">        if (name.endsWith(DEX_SUFFIX)) &#123;</span><br><span class="line">            dex = loadDexFile(file, optimizedDirectory);</span><br><span class="line">        // 如果是apk、jar、zip文件（这部分在不同的Android版本中，处理方式有细微差别）</span><br><span class="line">        &#125; else &#123;</span><br><span class="line">            zip = file;</span><br><span class="line">            dex = loadDexFile(file, optimizedDirectory);</span><br><span class="line">        &#125;</span><br><span class="line">        ...</span><br><span class="line">        // 3.将dex文件或压缩文件包装成Element对象，并添加到Element集合中</span><br><span class="line">        if ((zip != null) || (dex != null)) &#123;</span><br><span class="line">            elements.add(new Element(file, false, zip, dex));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    // 4.将Element集合转成Element数组返回</span><br><span class="line">    return elements.toArray(new Element[elements.size()]);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>DexPathList的构造函数是将一个个的目标（可能是dex、apk、jar、zip , 这些类型在一开始时就定义好了）封装成一个个Element对象，最后添加到Element集合中。</p>
+<p>Android的类加载器（不管是PathClassLoader，还是DexClassLoader），它们最后只认dex文件，而loadDexFile()是加载dex文件的核心方法，可以从jar、apk、zip中提取出dex</p>
+<p><strong>findClass 方法</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">public Class findClass(String name, List&lt;Throwable&gt; suppressed) &#123;</span><br><span class="line">    for (Element element : dexElements) &#123;</span><br><span class="line">        DexFile dex = element.dexFile;</span><br><span class="line">        if (dex != null) &#123;</span><br><span class="line">            Class clazz = dex.loadClassBinaryName(name, definingContext, suppressed);</span><br><span class="line">            if (clazz != null) &#123;</span><br><span class="line">                return clazz;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    if (dexElementsSuppressedExceptions != null) &#123;</span><br><span class="line">        suppressed.addAll(Arrays.asList(dexElementsSuppressedExceptions));</span><br><span class="line">    &#125;</span><br><span class="line">    return null;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在DexPathList的构造函数中已经初始化了dexElements，所以这个方法就很好理解了，只是对Element数组进行遍历，一旦找到类名与name相同的类时，就直接返回这个class，找不到则返回null。</p>
+<p><strong>热修复的实现方法</strong><br>加载class会使用BaseDexClassLoader，在加载时，会遍历文件下的element，并从element中获取dex文件</p>
+<p>class文件在dex里面 , 找到dex的方法是遍历数组 , 那么热修复的原理, 就是将改好bug的dex文件放进集合的头部, 这样遍历时会首先遍历修复好的dex并找到修复好的类。</p>
+<p><strong>一个Demo演示热修复的应用（代码修复）</strong></p>
+<p>建立TestClass 类文件<br>内容如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">package com.baweigame.hotupdateapplication;</span><br><span class="line">public class TestClass &#123;</span><br><span class="line">    public int Debug()&#123;</span><br><span class="line">        return 10/0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>除0会报异常。这个类即我们需要热更新修复的类。</p>
+<p>在MainActivity中调用如下：</p>
+<p><img src="2019-08-03-11-56-17.png" alt></p>
+<p>即点击 按钮 将发生错误。</p>
+<p><strong>下面是热修复核心工具类：FixDexUtil</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br></pre></td><td class="code"><pre><span class="line">package com.baweigame.hotupdateapplication;</span><br><span class="line">import android.content.Context;</span><br><span class="line">import android.os.Environment;</span><br><span class="line">import android.support.annotation.NonNull;</span><br><span class="line">import android.widget.Toast;</span><br><span class="line">import java.io.File;</span><br><span class="line">import java.lang.reflect.Array;</span><br><span class="line">import java.lang.reflect.Field;</span><br><span class="line">import java.util.HashSet;</span><br><span class="line">import dalvik.system.DexClassLoader;</span><br><span class="line">import dalvik.system.PathClassLoader;</span><br><span class="line">public class FixDexUtil &#123;</span><br><span class="line">    private static final String DEX_SUFFIX = &quot;.dex&quot;;</span><br><span class="line">    private static final String APK_SUFFIX = &quot;.apk&quot;;</span><br><span class="line">    private static final String JAR_SUFFIX = &quot;.jar&quot;;</span><br><span class="line">    private static final String ZIP_SUFFIX = &quot;.zip&quot;;</span><br><span class="line">    public static final String DEX_DIR = &quot;odex&quot;;</span><br><span class="line">    private static final String OPTIMIZE_DEX_DIR = &quot;optimize_dex&quot;;</span><br><span class="line">    private static HashSet&lt;File&gt; loadedDex = new HashSet&lt;&gt;();</span><br><span class="line">    static &#123;</span><br><span class="line">        loadedDex.clear();</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 加载补丁，使用默认目录：data/data/包名/files/odex</span><br><span class="line">     *</span><br><span class="line">     * @param context</span><br><span class="line">     */</span><br><span class="line">    public static void loadFixedDex(Context context) &#123;</span><br><span class="line">        loadFixedDex(context, null);</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 加载补丁</span><br><span class="line">     *</span><br><span class="line">     * @param context       上下文</span><br><span class="line">     * @param patchFilesDir 补丁所在目录</span><br><span class="line">     */</span><br><span class="line">    public static void loadFixedDex(Context context, File patchFilesDir) &#123;</span><br><span class="line">        // dex合并之前的dex</span><br><span class="line">        doDexInject(context, loadedDex);</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 验证是否需要热修复</span><br><span class="line">     */</span><br><span class="line">    public static boolean isGoingToFix(@NonNull Context context) &#123;</span><br><span class="line">        boolean canFix = false;</span><br><span class="line">        File externalStorageDirectory = null;//Environment.getExternalStorageDirectory();</span><br><span class="line">        // 遍历所有的修复dex , 因为可能是多个dex修复包</span><br><span class="line">        File fileDir = externalStorageDirectory != null ?</span><br><span class="line">                externalStorageDirectory :</span><br><span class="line">                new File(context.getFilesDir(), DEX_DIR);// data/data/包名/files/odex（这个可以任意位置）</span><br><span class="line">        File[] listFiles = fileDir.listFiles();</span><br><span class="line">        if (listFiles==null)&#123;</span><br><span class="line">            return false;</span><br><span class="line">        &#125;</span><br><span class="line">        for (File file : listFiles) &#123;</span><br><span class="line">            if (file.getName().startsWith(&quot;classes&quot;) &amp;&amp;</span><br><span class="line">                    (file.getName().endsWith(DEX_SUFFIX)</span><br><span class="line">                            || file.getName().endsWith(APK_SUFFIX)</span><br><span class="line">                            || file.getName().endsWith(JAR_SUFFIX)</span><br><span class="line">                            || file.getName().endsWith(ZIP_SUFFIX))) &#123;</span><br><span class="line">                loadedDex.add(file);// 存入集合</span><br><span class="line">                //有目标dex文件, 需要修复</span><br><span class="line">                canFix = true;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        return canFix;</span><br><span class="line">    &#125;</span><br><span class="line">    private static void doDexInject(Context appContext, HashSet&lt;File&gt; loadedDex) &#123;</span><br><span class="line">        String optimizeDir = appContext.getFilesDir().getAbsolutePath() +</span><br><span class="line">                File.separator + OPTIMIZE_DEX_DIR;</span><br><span class="line">        // data/data/包名/files/optimize_dex（这个必须是自己程序下的目录）</span><br><span class="line">        File fopt = new File(optimizeDir);</span><br><span class="line">        if (!fopt.exists()) &#123;</span><br><span class="line">            fopt.mkdirs();</span><br><span class="line">        &#125;</span><br><span class="line">        try &#123;</span><br><span class="line">            // 1.加载应用程序dex的Loader</span><br><span class="line">            PathClassLoader pathLoader = (PathClassLoader) appContext.getClassLoader();</span><br><span class="line">            for (File dex : loadedDex) &#123;</span><br><span class="line">                // 2.加载指定的修复的dex文件的Loader</span><br><span class="line">                DexClassLoader dexLoader = new DexClassLoader(</span><br><span class="line">                        dex.getAbsolutePath(),// 修复好的dex（补丁）所在目录</span><br><span class="line">                        fopt.getAbsolutePath(),// 存放dex的解压目录（用于jar、zip、apk格式的补丁）</span><br><span class="line">                        null,// 加载dex时需要的库</span><br><span class="line">                        pathLoader// 父类加载器</span><br><span class="line">                );</span><br><span class="line">                // 3.开始合并</span><br><span class="line">                // 合并的目标是Element[],重新赋值它的值即可</span><br><span class="line">                /**</span><br><span class="line">                 * BaseDexClassLoader中有 变量: DexPathList pathList</span><br><span class="line">                 * DexPathList中有 变量 Element[] dexElements</span><br><span class="line">                 * 依次反射即可</span><br><span class="line">                 */</span><br><span class="line">                //3.1 准备好pathList的引用</span><br><span class="line">                Object dexPathList = getPathList(dexLoader);</span><br><span class="line">                Object pathPathList = getPathList(pathLoader);</span><br><span class="line">                //3.2 从pathList中反射出element集合</span><br><span class="line">                Object leftDexElements = getDexElements(dexPathList);</span><br><span class="line">                Object rightDexElements = getDexElements(pathPathList);</span><br><span class="line">                //3.3 合并两个dex数组</span><br><span class="line">                Object dexElements = combineArray(leftDexElements, rightDexElements);</span><br><span class="line">                // 重写给PathList里面的Element[] dexElements;赋值</span><br><span class="line">                Object pathList = getPathList(pathLoader);// 一定要重新获取，不要用pathPathList，会报错</span><br><span class="line">                setField(pathList, pathList.getClass(), &quot;dexElements&quot;, dexElements);</span><br><span class="line">            &#125;</span><br><span class="line">            Toast.makeText(appContext, &quot;修复完成&quot;, Toast.LENGTH_SHORT).show();</span><br><span class="line">        &#125; catch (Exception e) &#123;</span><br><span class="line">            e.printStackTrace();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 反射给对象中的属性重新赋值</span><br><span class="line">     */</span><br><span class="line">    private static void setField(Object obj, Class&lt;?&gt; cl, String field, Object value) throws NoSuchFieldException, IllegalAccessException &#123;</span><br><span class="line">        Field declaredField = cl.getDeclaredField(field);</span><br><span class="line">        declaredField.setAccessible(true);</span><br><span class="line">        declaredField.set(obj, value);</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 反射得到对象中的属性值</span><br><span class="line">     */</span><br><span class="line">    private static Object getField(Object obj, Class&lt;?&gt; cl, String field) throws NoSuchFieldException, IllegalAccessException &#123;</span><br><span class="line">        Field localField = cl.getDeclaredField(field);</span><br><span class="line">        localField.setAccessible(true);</span><br><span class="line">        return localField.get(obj);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    /**</span><br><span class="line">     * 反射得到类加载器中的pathList对象</span><br><span class="line">     */</span><br><span class="line">    private static Object getPathList(Object baseDexClassLoader) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException &#123;</span><br><span class="line">        return getField(baseDexClassLoader, Class.forName(&quot;dalvik.system.BaseDexClassLoader&quot;), &quot;pathList&quot;);</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 反射得到pathList中的dexElements</span><br><span class="line">     */</span><br><span class="line">    private static Object getDexElements(Object pathList) throws NoSuchFieldException, IllegalAccessException &#123;</span><br><span class="line">        return getField(pathList, pathList.getClass(), &quot;dexElements&quot;);</span><br><span class="line">    &#125;</span><br><span class="line">    /**</span><br><span class="line">     * 数组合并 </span><br><span class="line">     */</span><br><span class="line">    private static Object combineArray(Object arrayLhs, Object arrayRhs) &#123;</span><br><span class="line">        Class&lt;?&gt; clazz = arrayLhs.getClass().getComponentType();</span><br><span class="line">        int i = Array.getLength(arrayLhs);// 得到左数组长度（补丁数组）</span><br><span class="line">        int j = Array.getLength(arrayRhs);// 得到原dex数组长度</span><br><span class="line">        int k = i + j;// 得到总数组长度（补丁数组+原dex数组）</span><br><span class="line">        Object result = Array.newInstance(clazz, k);// 创建一个类型为clazz，长度为k的新数组</span><br><span class="line">        System.arraycopy(arrayLhs, 0, result, 0, i);</span><br><span class="line">        System.arraycopy(arrayRhs, 0, result, i, j);</span><br><span class="line">        return result;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在MainActivity中调用，如：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">if (FixDexUtil.isGoingToFix(mContext)) &#123;</span><br><span class="line">    FixDexUtil.loadFixedDex(mContext, Environment.getExternalStorageDirectory());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>生成dex文件用于新版本修复旧版本bug：</p>
+<p>修改TestClass,如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">package com.baweigame.hotupdateapplication;</span><br><span class="line">public class TestClass &#123;</span><br><span class="line">    public int Debug()&#123;</span><br><span class="line">        return 10/2;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>rebuild project</p>
+<p>找到class文件，如下：</p>
+<p><img src="2019-08-03-11-56-59.png" alt></p>
+<p>将TestClass.class 文件拷贝出来，注意：拷贝的存放路径要与工程包名目录一致，如：</p>
+<p><img src="2019-08-03-11-57-10.png" alt></p>
+<p>找到dx.bat 并将目录配置到环境变量中。</p>
+<p>dx.bat目录 如： C:\Users\zhangyue\AppData\Local\Android\Sdk\build-tools\28.0.3</p>
+<p>编译dex包命令</p>
+<p>dx –dex –output c:\Users\zhangyue\Desktop\classes.dex C:\Users\zhangyue\Desktop\dex</p>
+<p>生成的classes.dex 即升级修复的新版本dex文件。</p>
+<p>将dex文件push到 /data/data/包名/files/odex 目录下，运行程序查看修复结果。</p>
+<hr>
+<hr>
+<hr>
+<p><strong>双亲委派机制</strong></p>
+<p><img src="2019-08-03-11-57-38.png" alt></p>
+<p>1.BootStrapClassLoader：启动类加载器，该ClassLoader是jvm在启动时创建的，用于加载 $JAVA_HOME/jre/lib下面的类库（或者通过参数-Xbootclasspath指定）。由于引导类加载器涉及到虚拟机本地实现细节，开发者无法直接获取到启动类加载器的引用，所以不能直接通过引用进行操作。<br>2.ExtClassLoader：扩展类加载器，该ClassLoader是在sun.misc.Launcher里作为一个内部类ExtClassLoader定义的（即 sun.misc.Launcher$ExtClassLoader），ExtClassLoader会加载 $JAVA_HOME/jre/lib/ext下的类库（或者通过参数-Djava.ext.dirs指定）。<br>3.AppClassLoader：应用程序类加载器，该ClassLoader同样是在sun.misc.Launcher里作为一个内部类AppClassLoader定义的（即 sun.misc.Launcher$AppClassLoader），AppClassLoader会加载java环境变量CLASSPATH所指定的路径下的类库，而CLASSPATH所指定的路径可以通过System.getProperty(“java.class.path”)获取；当然，该变量也可以覆盖，可以使用参数-cp，例如：java -cp 路径 （可以指定要执行的class目录）。<br>4.CustomClassLoader：自定义类加载器，该ClassLoader是指我们自定义的ClassLoader，比如tomcat的StandardClassLoader属于这一类；当然，大部分情况下使用AppClassLoader就足够了。</p>
+<p>ClassLoader的双亲委派机制是这样的（这里先忽略掉自定义类加载器CustomClassLoader：</p>
+<p>1.当AppClassLoader加载一个class时，它首先不会自己去尝试加载这个类，而是把类加载请求委派给父类加载器ExtClassLoader去完成。<br>2.当ExtClassLoader加载一个class时，它首先也不会自己去尝试加载这个类，而是把类加载请求委派给BootStrapClassLoader去完成。<br>3.如果BootStrapClassLoader加载失败（例如在$JAVA_HOME/jre/lib里未查找到该class），会使用ExtClassLoader来尝试加载；<br>4.若ExtClassLoader也加载失败，则会使用AppClassLoader来加载，如果AppClassLoader也加载失败，则会报出异常ClassNotFoundException。</p>
+
+            <br />
+            <p class="meta">
+                
+
+<a href="/tags/Android/"> <i class="fas fa-tags"></i>
+    Android </a>
+
+            </p>
+        </div>
+
+        <div class="col-sm-4">
+            
+
+<span><b>
+        TL;DR</b></span>
+<p>
+    Yet another hexo theme.
+</p>
+<hr />
+
+
+<span><b>
+        TL;DR 2</b></span>
+<p>
+    No, not another one :/
+</p>
+<hr />
+
+
+
+
+
+
+<span><a href="https://twitter.com/hexojs" target="_blank" rel="noopener"><b><i class="fab fa-twitter-square"></i>
+            <i class="fas fa-at"></i>
+            hexojs</b></a></span>
+<br />
+<a class="twitter-timeline" data-height="800" data-dnt="true" data-chrome="nofooter transparent noheader noborders "
+    href="https://twitter.com/hexojs?ref_src=twsrc%5Etfw"></a>
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+        </div>
+    </div>
+</div>
+<!-- Menu fade on scroll -->
+<script>
+    var isScrolling;
+    var prevScrollpos = window.pageYOffset;
+    window.addEventListener('scroll', function (event) {
+        window.clearTimeout(isScrolling);
+        isScrolling = setTimeout(function () {
+            var currentScrollPos = window.pageYOffset;
+            if (prevScrollpos > currentScrollPos) {
+                $("#navbar").slideDown();
+            } else {
+                $("#navbar").slideUp();
+            }
+            prevScrollpos = currentScrollPos;
+        }, 66);
+    }, false);
+</script>
+
+<a class="float-left gradient btn paginationbtn" href="/2019/08/03/Android组件化开发/"><i class="fas fa-chevron-left"></i></a>
+
+
+    </main>
+    <!-- Footer -->
+    <footer class="page-footer">
+  <div class="container">
+    <div class="social-icons">
+      
+      <a href="https://hexo.io/" title="Hexo.io" target="_blank" rel="noopener" class="fas fa-home"></a>
+      
+      <a href="https://twitter.com/hexojs" title="@hexojs" target="_blank" rel="noopener" class="fab fa-twitter"></a>
+      
+      <a href="https://github.com/RandomAdversary/Gradient/issues" title="Report issue" target="_blank" rel="noopener" class="fas fa-bug"></a>
+      
+    </div>
+  </div>
+</footer>
+    <!-- After footer scripts -->
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+    crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
+    crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
+    crossorigin="anonymous"></script>
+</body>
+
+</html>
